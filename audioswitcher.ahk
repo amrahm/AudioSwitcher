@@ -8,8 +8,23 @@ ReadIni("settings.ini")
 global headphones := GeneralHeadphones
 global speakers := GeneralSpeakers
 
+hkComboSwitchDevice := KeyboardShortcutsCombinationsSwitchDevice
+arrayS := Object(), arrayR := Object()
+arrayS.Insert("\s*|,"), arrayR.Insert("")
+arrayS.Insert("L(Ctrl|Shift|Alt|Win)"), arrayR.Insert("<$1")
+arrayS.Insert("R(Ctrl|Shift|Alt|Win)"), arrayR.Insert(">$1")
+arrayS.Insert("Ctrl"), arrayR.Insert("^")
+arrayS.Insert("Shift"), arrayR.Insert("+")
+arrayS.Insert("Alt"), arrayR.Insert("!")
+arrayS.Insert("Win"), arrayR.Insert("#")
+
+for index in arrayS {
+    hkComboSwitchDevice := RegExReplace(hkComboSwitchDevice, arrayS[index], arrayR[index])
+}
+setUpHotkeyWithCombo(hkComboSwitchDevice, "SwapAudioDevice", "[KeyboardShortcutsCombinations] SwitchDevice")
+
 ; Set the icon
-SwapAudioDevice(headphones, speakers, False)
+SwapAudioDevice(False)
 
 ; Setup the tray
 DblClickSpeed := DllCall("GetDoubleClickTime") , firstClick := 0
@@ -23,50 +38,10 @@ Menu, Tray, Click, 1
 
 return
 
-Reload() {
-    Reload
-}
-
-Exit() {
-    ExitApp
-}
-
-OpenWindowsSoundSettings() {
-    run mmsys.cpl
-}
-
-ClickHandler:
-    If ((A_TickCount-firstClick) < DblClickSpeed) { ; double click
-        firstClick = 0
-        OpenWindowsSoundSettings()
-
-    }
-    Else { ; Single click
-        firstClick := A_TickCount
-        KeyWait, LButton
-        KeyWait, LButton, % "D T" . DblClickSpeed/1000
-        If (ErrorLevel && firstClick)
-            SwapAudioDevice(headphones, speakers, True)
-    }
-Return
-
-NotifyTrayClick(P*) { ;  v0.41 by SKAN on D39E/D39N @ tiny.cc/notifytrayclick
-    Static Msg, Fun:="NotifyTrayClick", NM:=OnMessage(0x404,Func(Fun),-1), Chk,T:=-250,Clk:=1
-    If ( (NM := Format(Fun . "_{:03X}", Msg := P[2])) && P.Count()<4 )
-        Return ( T := Max(-5000, 0-(P[1] ? Abs(P[1]) : 250)) )
-    Critical
-    If ( ( Msg<0x201 || Msg>0x209 ) || ( IsFunc(NM) || Islabel(NM) )=0 )
-        Return
-    Chk := (Fun . "_" . (Msg<=0x203 ? "203" : Msg<=0x206 ? "206" : Msg<=0x209 ? "209" : ""))
-    SetTimer, %NM%, % (Msg==0x203 || Msg==0x206 || Msg==0x209)
-    ? (-1, Clk:=2) : ( Clk=2 ? ("Off", Clk:=1) : ( IsFunc(Chk) || IsLabel(Chk) ? T : -1) )
-Return True
-}
-
-SwapAudioDevice(headphone, speaker, actually_swap) {
+SwapAudioDevice(actually_swap:=True) {
     ; Get device IDs.
-    A := VA_GetDevice(headphone), VA_IMMDevice_GetId(A, A_id)
-    B := VA_GetDevice(speaker), VA_IMMDevice_GetId(B, B_id)
+    A := VA_GetDevice(headphones), VA_IMMDevice_GetId(A, A_id)
+    B := VA_GetDevice(speakers), VA_IMMDevice_GetId(B, B_id)
     if A && B {
         ; Get ID of default playback device.
         default := VA_GetDevice("playback")
@@ -95,5 +70,40 @@ SwapAudioDevice(headphone, speaker, actually_swap) {
         throw Exception("Unknown audio device", -1, A ? speakers : headphones)
 }
 
-+Pause:: ; Shift+Pause Hotkey
-    SwapAudioDevice(headphones, speakers, True)
+Reload() {
+    Reload
+}
+
+Exit() {
+    ExitApp
+}
+
+OpenWindowsSoundSettings() {
+    run mmsys.cpl
+}
+
+ClickHandler:
+    If ((A_TickCount-firstClick) < DblClickSpeed) { ; double click
+        firstClick = 0
+        OpenWindowsSoundSettings()
+
+    }
+    Else { ; Single click
+        firstClick := A_TickCount
+        KeyWait, LButton
+        KeyWait, LButton, % "D T" . DblClickSpeed/1000
+        If (ErrorLevel && firstClick)
+            SwapAudioDevice()
+    }
+Return
+
+setUpHotkey(hk, handler, settingPaths) {
+    Hotkey, %hk%, %handler%, UseErrorLevel
+    if (ErrorLevel <> 0) {
+        MsgBox, 16, Error, One or more keyboard shortcut settings have been defined incorrectly in the settings file: `n%settingPaths%. `n`nPlease read the README for instructions.
+            Exit
+    }
+}
+setUpHotkeyWithCombo(combo, handler, settingPaths) {
+    combo <> "" ? setUpHotkey(combo, handler, settingPaths) : ""
+}
