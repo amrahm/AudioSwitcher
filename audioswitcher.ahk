@@ -1,3 +1,4 @@
+#SingleInstance, Force
 #Include, %A_ScriptDir%\libraries\VA.ahk
 #Include, %A_ScriptDir%\libraries\read-ini.ahk
 
@@ -31,6 +32,7 @@ DblClickSpeed := DllCall("GetDoubleClickTime") , firstClick := 0
 Menu, Tray, NoStandard
 Menu, Tray, Add, Swap Device, ClickHandler
 Menu, Tray, Default, Swap Device
+Menu, Tray, Add, Open AudioSwitcher Settings, OpenSettings
 Menu, Tray, Add, Open Windows Sound Settings, OpenWindowsSoundSettings
 Menu, Tray, Add, Reload Settings, Reload
 Menu, Tray, Add, Exit, Exit
@@ -42,32 +44,39 @@ SwapAudioDevice(actually_swap:=True) {
     ; Get device IDs.
     A := VA_GetDevice(headphones), VA_IMMDevice_GetId(A, A_id)
     B := VA_GetDevice(speakers), VA_IMMDevice_GetId(B, B_id)
-    if A && B {
-        ; Get ID of default playback device.
-        default := VA_GetDevice("playback")
-        VA_IMMDevice_GetId(default, default_id)
-        ObjRelease(default)
+    ; Get ID of default playback device.
+    default := VA_GetDevice("playback")
+    VA_IMMDevice_GetId(default, default_id)
+    ObjRelease(default)
 
-        id_to_use := actually_swap ? A_id : B_id
-        if StrGet(&default_id,,"UTF-16") == StrGet(&id_to_use,,"UTF-16"){ ;idk why direct comparison didn't work
-            Device_Name := VA_GetDeviceName(B)
-            Menu, Tray, Icon, %A_WorkingDir%\speaker.ico,,1
-        } else {
-            Device_Name := VA_GetDeviceName(A)
-            Menu, Tray, Icon, %A_WorkingDir%\headset.ico,,1
-        }
-        Menu, Tray, Tip, %Device_Name%
+    isA := A && default_id == A_id
+    isB := B && default_id == B_id
 
-        if actually_swap {
-            ; If device A is default, set device B; otherwise set device A.
-            VA_SetDefaultEndpoint(default_id == A_id ? B : A, 0)
-            VA_SetDefaultEndpoint(default_id == A_id ? B : A, 2) ; also set default communication device
-        }
+    if actually_swap {
+        toSwap := (!A || isA) && B ? B : A ? A : ""
+        isA := toSwap == A
+        isB := toSwap == B
+        VA_SetDefaultEndpoint(toSwap, 0)
+        VA_SetDefaultEndpoint(toSwap, 2) ; also set default communication device
     }
+
+    Device_Name := isB ? VA_GetDeviceName(B) : isA ? VA_GetDeviceName(A) : "Other Device"
+    Missing_Message := !A && !B ? " (Neither device from settings.ini was found)" : !A ? " (" headphones "not found)" : !B ? " (" speakers " not found)" : ""
+    Menu, Tray, Tip, %Device_Name%%Missing_Message%
+
+    Ico := A_ScriptDir (isB ? "\speaker.ico" : isA ? "\headset.ico" : "\audioswitcher.ico")
+    Menu, Tray, Icon, %Ico%
+
     ObjRelease(B)
     ObjRelease(A)
-    if !(A && B)
-        throw Exception("Unknown audio device", -1, A ? speakers : headphones)
+}
+
+OpenSettings() {
+    Run, edit "settings.ini"
+}
+
+OpenWindowsSoundSettings() {
+    run mmsys.cpl
 }
 
 Reload() {
@@ -76,10 +85,6 @@ Reload() {
 
 Exit() {
     ExitApp
-}
-
-OpenWindowsSoundSettings() {
-    run mmsys.cpl
 }
 
 ClickHandler:
